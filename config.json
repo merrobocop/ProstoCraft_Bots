@@ -1,0 +1,145 @@
+{
+  "server": {
+    "host": "mc.prostocraft.com",
+    "version": "1.16.5",
+    "password": "vladpiska2"
+  },
+  "timing": {
+    "digDelay": 0,
+    "stuckThreshold": 30000,
+    "restartIfIdleMs": 120000,
+    "reconnectRegular": 15000,
+    "reconnectOnInternetLoss": 45000,
+    "internetRetryInterval": 60000,
+    "internetCheckInterval": 30000,
+    "maxInternetRetries": 999,
+    "graceAfterSpawn": 20000,
+    "startStagger": 30000,
+    "startStaggerJitter": 15000,
+    "periodicRejoinMs": 3600000,
+    "rotationDelayBetweenBots": 120000,
+    "minBlocksPerMin": 3,
+    "stuckRecoveryMs": 60000
+  },
+  "antibot": {
+    "minInterval": 3000,
+    "maxInterval": 12000,
+    "shortMoveMs": 150,
+    "fallCheckEnabled": false,
+    "fallCheckTimeout": 3000
+  },
+  "menu": {
+    "slot1": 10,
+    "slot2": 13,
+    "hotbarSlot": 0
+  },
+  "globalRestart": {
+    "errorThreshold": 15,
+    "timeWindowMs": 600000,
+    "stopOnNoInternet": false,
+    "noInternetThreshold": 8,
+    "unstableInternetMode": true,
+    "memoryLimitMB": 1024
+  },
+  "position": {
+    "checkInterval": 10000,
+    "returnTimeout": 8000
+  },
+  "ui": {
+    "renderIntervalMs": 1000,
+    "graphUpdateMs": 15000
+  },
+  "monitor": {
+    "historyLength": 180,
+    "cpuRamHistoryLength": 60
+  },
+  "maintenance": {
+    "cleanupIntervalMs": 3600000,
+    "softRestartMaxPerHour": 2
+  },
+  "metrics": {
+    "port": 3000
+  },
+  "log": {
+    "maxSizeBytes": 10485760
+  },
+  "features": {
+    "enableSoftRestart": true,
+    "enableHeapSnapshot": false,
+    "enableActiveFallCheck": true,
+    "enableMetrics": true,
+    "enablePerBotLogs": true,
+    "enableLazyRotation": false
+  },
+  "logging": {
+    "level": "info",
+    "toFile": false,
+    "filePath": "bot.log"
+  },
+  "pause": {
+    "file": "pause.txt",
+    "checkInterval": 1000
+  },
+  "bots": [
+    {
+      "username": "AfraManAfkBot",
+      "standPosition": { "x": -1861.5, "y": 85.1875, "z": 38.5 },
+      "maxDistanceFromStand": 0.4,
+      "blocksToMine": [
+        { "x": -1862, "y": 87, "z": 38 },
+        { "x": -1862, "y": 88, "z": 38 },
+        { "x": -1862, "y": 89, "z": 38 },
+        { "x": -1862, "y": 90, "z": 38 },
+        { "x": -1862, "y": 91, "z": 38 }
+      ]
+    },
+    {
+      "username": "AfraManAfkBot2",
+      "standPosition": { "x": -1861.5, "y": 85.1875, "z": 28.5 },
+      "maxDistanceFromStand": 0.4,
+      "blocksToMine": [
+        { "x": -1862, "y": 87, "z": 28 },
+        { "x": -1862, "y": 88, "z": 28 },
+        { "x": -1862, "y": 89, "z": 28 },
+        { "x": -1862, "y": 90, "z": 28 },
+        { "x": -1862, "y": 91, "z": 28 }
+      ]
+    },
+    {
+      "username": "AfraManAfkBot3",
+      "standPosition": { "x": -1861.5, "y": 85.1875, "z": 18.5 },
+      "maxDistanceFromStand": 0.4,
+      "blocksToMine": [
+        { "x": -1862, "y": 87, "z": 18 },
+        { "x": -1862, "y": 88, "z": 18 },
+        { "x": -1862, "y": 89, "z": 18 },
+        { "x": -1862, "y": 90, "z": 18 },
+        { "x": -1862, "y": 91, "z": 18 }
+      ]
+    },
+	{
+      "username": "AfraManAfkBot4",
+      "standPosition": { "x": -1861.5, "y": 85.1875, "z": 8.5 },
+      "maxDistanceFromStand": 0.4,
+      "blocksToMine": [
+        { "x": -1862, "y": 87, "z": 8 },
+        { "x": -1862, "y": 88, "z": 8 },
+        { "x": -1862, "y": 89, "z": 8 },
+        { "x": -1862, "y": 90, "z": 8 },
+        { "x": -1862, "y": 91, "z": 8 }
+      ]
+    },
+	{
+      "username": "AfraManAfkBot5",
+      "standPosition": { "x": -1861.5, "y": 85.1875, "z": -1.5 },
+      "maxDistanceFromStand": 0.4,
+      "blocksToMine": [
+        { "x": -1862, "y": 87, "z": -2 },
+        { "x": -1862, "y": 88, "z": -2 },
+        { "x": -1862, "y": 89, "z": -2 },
+        { "x": -1862, "y": 90, "z": -2 },
+        { "x": -1862, "y": 91, "z": -2 }
+      ]
+    }
+  ]
+}
