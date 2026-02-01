@@ -1,0 +1,28 @@
+{
+  "name": "autominerv2",
+  "version": "1.0.0",
+  "description": "",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/merrobocop/ProstoCraft_Bots.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/merrobocop/ProstoCraft_Bots/issues"
+  },
+  "homepage": "https://github.com/merrobocop/ProstoCraft_Bots#readme",
+  "dependencies": {
+    "blessed": "^0.1.81",
+    "blessed-contrib": "^4.11.0",
+    "mineflayer": "^4.34.0",
+    "mineflayer-physics": "^0.0.9",
+    "vec3": "^0.1.10"
+  }
+}
