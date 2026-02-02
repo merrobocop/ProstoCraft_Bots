@@ -17,27 +17,137 @@ try {
 
 
 // ============================================================================
-// ПОДАВЛЕНИЕ НЕНУЖНЫХ ЛОГОВ
+// КОНФИГУРАЦИЯ
 // ============================================================================
 const _warn = console.warn
 const _error = console.error
 const _log = console.log
 
-// Полностью отключаем console.warn для сетевых ошибок
+const DEFAULT_CONFIG = {
+  server: { host: '', version: '', password: '' },
+  timing: {
+    digDelay: 0,
+    stuckThreshold: 30000,
+    restartIfIdleMs: 120000,
+    reconnectRegular: 15000,
+    reconnectOnInternetLoss: 45000,
+    internetRetryInterval: 60000,
+    internetCheckInterval: 30000,
+    maxInternetRetries: 999,
+    graceAfterSpawn: 20000,
+    startStagger: 30000,
+    startStaggerJitter: 15000,
+    periodicRejoinMs: 3600000,
+    rotationDelayBetweenBots: 120000
+  },
+  antibot: {
+    minInterval: 3000,
+    maxInterval: 12000,
+    shortMoveMs: 150,
+    fallCheckEnabled: false,
+    fallCheckTimeout: 3000
+  },
+  menu: { slot1: 10, slot2: 13, hotbarSlot: 0 },
+  globalRestart: {
+    errorThreshold: 15,
+    timeWindowMs: 600000,
+    stopOnNoInternet: false,
+    noInternetThreshold: 8,
+    unstableInternetMode: true,
+    memoryLimitMB: 0
+  },
+  position: { checkInterval: 10000, returnTimeout: 8000 },
+  ui: { renderIntervalMs: 1000, graphUpdateMs: 15000 },
+  monitor: { historyLength: 180, cpuRamHistoryLength: 60 },
+  log: { maxSizeBytes: 10 * 1024 * 1024, backups: 3 },
+  logging: { level: 'info', toFile: true, filePath: 'bot.log' },
+  bots: []
+}
+
+function mergeConfig(base, overrides) {
+  if (!overrides || typeof overrides !== 'object') return base
+  const merged = { ...base }
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      merged[key] = mergeConfig(base[key] || {}, value)
+    } else {
+      merged[key] = value
+    }
+  }
+  return merged
+}
+
+function validateConfig(cfg) {
+  const errors = []
+  if (!cfg.server.host) errors.push('server.host обязателен')
+  if (!cfg.server.version) errors.push('server.version обязателен')
+  if (!cfg.server.password) errors.push('server.password обязателен')
+  if (!cfg.menu || typeof cfg.menu.slot1 !== 'number' || typeof cfg.menu.slot2 !== 'number') {
+    errors.push('menu.slot1 и menu.slot2 должны быть числами')
+  }
+  if (!Array.isArray(cfg.bots) || cfg.bots.length === 0) {
+    errors.push('bots должен быть непустым массивом')
+  } else {
+    cfg.bots.forEach((bot, index) => {
+      if (!bot.username) errors.push(`bots[${index}].username обязателен`)
+      if (!Array.isArray(bot.blocksToMine) || bot.blocksToMine.length === 0) {
+        errors.push(`bots[${index}].blocksToMine должен быть непустым массивом`)
+      }
+    })
+  }
+  return errors
+}
+
+let config
+try {
+  const configPath = path.join(__dirname, 'config.json')
+  const rawConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'))
+  config = mergeConfig(DEFAULT_CONFIG, rawConfig)
+  const errors = validateConfig(config)
+  if (errors.length > 0) {
+    _error('ERR Ошибка конфигурации:', errors.join('; '))
+    process.exit(1)
+  }
+} catch (error) {
+  _error('ERR Ошибка загрузки config.json:', error.message)
+  process.exit(1)
+}
+
+const LOG_LEVELS = { error: 0, warning: 1, info: 2, debug: 3 }
+const currentLogLevel = LOG_LEVELS[config.logging.level] ?? LOG_LEVELS.info
+
+const SUPPRESSED_MESSAGES = [
+  'Ignoring block entities',
+  'chunk failed to load',
+  'entity.objectType is deprecated',
+  'deprecated',
+  'ECONNRESET',
+  'ETIMEDOUT',
+  'ECONNABORTED',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'EHOSTUNREACH',
+  'ECONNREFUSED',
+  'socket hang up',
+  'errno',
+  'syscall'
+]
+
+function shouldSuppressMessage(msg) {
+  return SUPPRESSED_MESSAGES.some(entry => msg.includes(entry))
+}
+
+function shouldLog(level) {
+  return (LOG_LEVELS[level] ?? LOG_LEVELS.info) <= currentLogLevel
+}
+
+// ============================================================================
+// ПОДАВЛЕНИЕ НЕНУЖНЫХ ЛОГОВ
+// ============================================================================
 console.warn = (...args) => {
   const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')
-  if (msg.includes('Ignoring block entities')) return
-  if (msg.includes('chunk failed to load')) return
-  if (msg.includes('entity.objectType is deprecated')) return
-  if (msg.includes('deprecated')) return
-  if (msg.includes('ECONNRESET')) return
-  if (msg.includes('ETIMEDOUT')) return
-  if (msg.includes('ECONNABORTED')) return
-  if (msg.includes('ENOTFOUND')) return
-  if (msg.includes('EAI_AGAIN')) return
-  if (msg.includes('EHOSTUNREACH')) return
-  if (msg.includes('ECONNREFUSED')) return
-  if (msg.includes('socket hang up')) return
+  if (shouldSuppressMessage(msg)) return
+  if (shouldLog('warning')) _warn(...args)
 }
 
 console.error = (...args) => {
@@ -47,144 +157,107 @@ console.error = (...args) => {
     if (a && a.stack) return a.stack
     return JSON.stringify(a)
   }).join(' ')
-  
-  if (msg.includes('Ignoring block entities')) return
-  if (msg.includes('chunk failed to load')) return
-  if (msg.includes('ECONNRESET')) return
-  if (msg.includes('ETIMEDOUT')) return
-  if (msg.includes('ECONNABORTED')) return
-  if (msg.includes('ENOTFOUND')) return
-  if (msg.includes('EAI_AGAIN')) return
-  if (msg.includes('EHOSTUNREACH')) return
-  if (msg.includes('ECONNREFUSED')) return
-  if (msg.includes('socket hang up')) return
-  if (msg.includes('errno')) return
-  if (msg.includes('syscall')) return
+
+  if (shouldSuppressMessage(msg)) return
+  if (shouldLog('error')) _error(...args)
 }
 
-console.log = () => {}
+console.log = (...args) => {
+  const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')
+  if (shouldSuppressMessage(msg)) return
+  if (shouldLog('info')) _log(...args)
+}
 
 process.on('uncaughtException', (err) => {
   const msg = String(err && err.message ? err.message : err)
-  if (msg.includes('ECONNRESET') || 
-      msg.includes('ETIMEDOUT') || 
-      msg.includes('ECONNABORTED') ||
-      msg.includes('EHOSTUNREACH') ||
-      msg.includes('ECONNREFUSED') ||
-      msg.includes('ENOTFOUND') ||
-      msg.includes('EAI_AGAIN') ||
-      msg.includes('socket hang up') ||
-      msg.includes('errno') ||
-      msg.includes('syscall')) {
-    return
-  }
+  if (shouldSuppressMessage(msg)) return
+  _error(err)
 })
 
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason) => {
   const msg = String(reason && reason.message ? reason.message : reason)
-  if (msg.includes('ECONNRESET') || 
-      msg.includes('ETIMEDOUT') || 
-      msg.includes('ECONNABORTED') ||
-      msg.includes('EHOSTUNREACH') ||
-      msg.includes('ECONNREFUSED') ||
-      msg.includes('ENOTFOUND') ||
-      msg.includes('EAI_AGAIN') ||
-      msg.includes('socket hang up') ||
-      msg.includes('errno') ||
-      msg.includes('syscall')) {
-    return
-  }
+  if (shouldSuppressMessage(msg)) return
+  _error(reason)
 })
-
-// ============================================================================
-// ЗАГРУЗКА КОНФИГУРАЦИИ
-// ============================================================================
 
 const originalStderrWrite = process.stderr.write.bind(process.stderr)
 process.stderr.write = (chunk, encoding, callback) => {
   const str = chunk.toString()
-  if (str.includes('ECONNRESET') ||
-      str.includes('ETIMEDOUT') ||
-      str.includes('ECONNABORTED') ||
-      str.includes('ENOTFOUND') ||
-      str.includes('EAI_AGAIN') ||
-      str.includes('EHOSTUNREACH') ||
-      str.includes('ECONNREFUSED') ||
-      str.includes('errno') ||
-      str.includes('syscall') ||
-      str.includes('socket hang up')) {
+  if (shouldSuppressMessage(str)) {
     if (callback) callback()
     return true
   }
-  if (callback) callback()
-  return true
+  return originalStderrWrite(chunk, encoding, callback)
 }
 
 // ============================================================================
 // ЛОГИРОВАНИЕ В ФАЙЛ
 // ============================================================================
-const LOG_FILE_PATH = path.join(__dirname, 'bot.log')
-const MAX_LOG_SIZE = 10 * 1024 * 1024 // 10 МБ
+const LOG_FILE_PATH = path.join(__dirname, config.logging.filePath || 'bot.log')
+const MAX_LOG_SIZE = config.log.maxSizeBytes
+const LOG_BACKUPS = Math.max(1, config.log.backups || 3)
 let logFileStream = null
 let currentLogSize = 0
 
+function rotateLogFiles() {
+  for (let i = LOG_BACKUPS - 1; i >= 0; i--) {
+    const suffix = i === 0 ? '' : `.old.${i}`
+    const nextSuffix = `.old.${i + 1}`
+    const source = `${LOG_FILE_PATH}${suffix}`
+    const destination = `${LOG_FILE_PATH}${nextSuffix}`
+    if (fs.existsSync(source)) {
+      if (i + 1 >= LOG_BACKUPS) {
+        fs.unlinkSync(source)
+      } else {
+        fs.renameSync(source, destination)
+      }
+    }
+  }
+}
+
 function initLogFile() {
+  if (!config.logging.toFile) return
   try {
     if (fs.existsSync(LOG_FILE_PATH)) {
       const stats = fs.statSync(LOG_FILE_PATH)
       currentLogSize = stats.size
-      
       if (currentLogSize > MAX_LOG_SIZE) {
-        const backupPath = LOG_FILE_PATH + '.old'
-        if (fs.existsSync(backupPath)) {
-          fs.unlinkSync(backupPath)
-        }
-        fs.renameSync(LOG_FILE_PATH, backupPath)
+        rotateLogFiles()
         currentLogSize = 0
       }
     }
-    
+
     logFileStream = fs.createWriteStream(LOG_FILE_PATH, { flags: 'a' })
-    
+
     const startMsg = `\n${'='.repeat(80)}\n[${new Date().toISOString()}] === НОВАЯ СЕССИЯ ===\n${'='.repeat(80)}\n`
     logFileStream.write(startMsg)
     currentLogSize += Buffer.byteLength(startMsg)
-    
   } catch (e) {
-    console.error('Ошибка инициализации лог-файла:', e.message)
+    _error('Ошибка инициализации лог-файла:', e.message)
   }
 }
 
 function writeToLogFile(message) {
   if (!logFileStream) return
-  
+
   try {
     const timestamp = new Date().toISOString()
     const logLine = `[${timestamp}] ${message}\n`
     const byteLength = Buffer.byteLength(logLine)
-    
+
     if (currentLogSize + byteLength > MAX_LOG_SIZE) {
       logFileStream.end()
-      
-      const backupPath = LOG_FILE_PATH + '.old'
-      if (fs.existsSync(backupPath)) {
-        fs.unlinkSync(backupPath)
-      }
-      if (fs.existsSync(LOG_FILE_PATH)) {
-        fs.renameSync(LOG_FILE_PATH, backupPath)
-      }
-      
+      rotateLogFiles()
       logFileStream = fs.createWriteStream(LOG_FILE_PATH, { flags: 'a' })
       currentLogSize = 0
-      
+
       const rotationMsg = `[${timestamp}] === РОТАЦИЯ ЛОГА (превышен размер ${MAX_LOG_SIZE} байт) ===\n`
       logFileStream.write(rotationMsg)
       currentLogSize += Buffer.byteLength(rotationMsg)
     }
-    
+
     logFileStream.write(logLine)
     currentLogSize += byteLength
-    
   } catch (e) {}
 }
 
@@ -198,14 +271,15 @@ process.on('exit', () => {
   }
 })
 
-let config
-try {
-  const configPath = path.join(__dirname, 'config.json')
-  config = JSON.parse(fs.readFileSync(configPath, 'utf8'))
-} catch (error) {
-  console.error('ERR Ошибка загрузки config.json:', error.message)
-  process.exit(1)
-}
+process.on('SIGINT', () => {
+  stopAllBots()
+  process.exit(0)
+})
+
+process.on('SIGTERM', () => {
+  stopAllBots()
+  process.exit(0)
+})
 
 const SERVER_HOST = config.server.host
 const MC_VERSION = config.server.version
@@ -241,6 +315,10 @@ const ROTATION_DELAY_BETWEEN_BOTS = config.timing.rotationDelayBetweenBots || 12
 
 const POSITION_CHECK_INTERVAL = config.position?.checkInterval || 10000
 const POSITION_RETURN_TIMEOUT = config.position?.returnTimeout || 8000
+const UI_RENDER_INTERVAL_MS = config.ui?.renderIntervalMs || 1000
+const GRAPH_UPDATE_MS = config.ui?.graphUpdateMs || 15000
+const HISTORY_LENGTH = config.monitor?.historyLength || 180
+const MEMORY_LIMIT_MB = config.globalRestart?.memoryLimitMB || 0
 
 // ============================================================================
 // ГРАФИЧЕСКИЙ ИНТЕРФЕЙС (BLESSED)
@@ -350,15 +428,15 @@ function updateScriptResources() {
   {yellow-fg} CPU:{/yellow-fg}  {bold}${cpuPercent}%{/bold}
   {cyan-fg} RAM:{/cyan-fg}  {bold}${memUsage} MB{/bold}
   `);
-  
-  screen.render();
+
+  scheduleUIUpdate();
 }
 
 function updateActivityGraph() {
   const now = new Date()
   const timeLabel = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
   monitorData.activityHistory.x.push(timeLabel)
-  if (monitorData.activityHistory.x.length > 60) monitorData.activityHistory.x.shift()
+  if (monitorData.activityHistory.x.length > HISTORY_LENGTH) monitorData.activityHistory.x.shift()
   
   const series = []
   const colors = ['yellow', 'cyan', 'magenta', 'green', 'red', 'blue']
@@ -370,7 +448,7 @@ function updateActivityGraph() {
     }
     const blocksPerMin = botData.blocksLastMinute || 0
     monitorData.activityHistory.y[botName].push(blocksPerMin)
-    if (monitorData.activityHistory.y[botName].length > 60) {
+    if (monitorData.activityHistory.y[botName].length > HISTORY_LENGTH) {
       monitorData.activityHistory.y[botName].shift()
     }
     const xLength = monitorData.activityHistory.x.length
@@ -416,6 +494,7 @@ function updateBotsTable() {
 }
 
 function addLog(level, botName, message) {
+  if (!shouldLog(level)) return
   const now = new Date()
   const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
   const colors = { 'info': '{cyan-fg}', 'success': '{green-fg}', 'warning': '{yellow-fg}', 'error': '{red-fg}' }
@@ -456,14 +535,19 @@ function updateBotStatus(botName, status, data = {}) {
     bot.blocksLastMinute = bot.blockTimes.length
     bot.lastBlockTime = now
   }
-  updateUI()
+  scheduleUIUpdate()
 }
 
-function updateUI() {
-  updateInfoBox()
-  updateActivityGraph()
-  updateBotsTable()
-  screen.render()
+let uiUpdateScheduled = false
+function scheduleUIUpdate() {
+  if (uiUpdateScheduled) return
+  uiUpdateScheduled = true
+  setTimeout(() => {
+    updateInfoBox()
+    updateBotsTable()
+    screen.render()
+    uiUpdateScheduled = false
+  }, UI_RENDER_INTERVAL_MS)
 }
 
 // ============================================================================
@@ -658,6 +742,30 @@ function createBot(cfg) {
   let waitKickCount = 0
   // FIX 2: Флаг подтверждения позиции — позиция надёжна только после первого блока
   let positionConfirmed = false
+
+  function getBackoffForError(err, msg) {
+    const lowerMsg = msg.toLowerCase()
+    const isNetworkError = ['ECONNRESET','ECONNABORTED','ENOTFOUND','ETIMEDOUT','EAI_AGAIN','EHOSTUNREACH']
+      .some(c => (err.code || '').includes(c)) || msg.includes('socket hang up')
+    const isConnectionIssue = err.code === 'ENOTFOUND' || err.code === 'EAI_AGAIN' || err.code === 'EHOSTUNREACH'
+
+    if (msg.includes('connect ETIMEDOUT') || err.syscall === 'connect') {
+      return { delay: 15000 + Math.floor(Math.random() * 15000), isNoInternet: false }
+    }
+    if (msg.includes('client timed out after')) {
+      return { delay: 20000 + Math.floor(Math.random() * 20000), isNoInternet: false }
+    }
+    if (lowerMsg.includes('you are logging in too fast') || lowerMsg.includes('logging too')) {
+      return { delay: 60000 + Math.floor(Math.random() * 60000), isNoInternet: false }
+    }
+    if (isNetworkError) {
+      if (isConnectionIssue) {
+        return { delay: 20000 + Math.floor(Math.random() * 20000), isNoInternet: true }
+      }
+      return { delay: 8000 + Math.floor(Math.random() * 12000), isNoInternet: false }
+    }
+    return { delay: 15000 + Math.floor(Math.random() * 15000), isNoInternet: false }
+  }
 
 
   function cleanupTimers() {
@@ -1295,54 +1403,17 @@ function createBot(cfg) {
       positionConfirmed = false // FIX 7c: сброс при ошибке
       const msg = String(err && err.message ? err.message : err)
       
-      if (msg.includes('Ignoring block entities')) return
-      if (msg.includes('chunk failed to load')) return
-      if (msg.includes('entity.objectType')) return
-      if (msg.includes('deprecated')) return
+      if (shouldSuppressMessage(msg)) return
       
       addLog('error', username, msg.substring(0, 60))
       cleanupTimers()
       updateBotStatus(username, 'оффлайн')
-      
-      if (msg.includes('connect ETIMEDOUT') || err.syscall === 'connect') {
-        backoff = 15000 + Math.floor(Math.random() * 15000)
-        scheduleReconnectLocal(backoff, true)
-        return
+
+      const backoffInfo = getBackoffForError(err, msg)
+      backoff = backoffInfo.delay
+      if (backoffInfo.isNoInternet && !UNSTABLE_INTERNET_MODE) {
+        noteNoInternetError()
       }
-      
-      if (msg.includes('client timed out after')) {
-        addLog('warning', username, '! Клиент таймаут')
-        backoff = 20000 + Math.floor(Math.random() * 20000)
-        scheduleReconnectLocal(backoff, true)
-        return
-      }
-      
-      if (msg.toLowerCase().includes('you are logging in too fast') || msg.toLowerCase().includes('logging too')) {
-        backoff = 60000 + Math.floor(Math.random() * 60000)
-        scheduleReconnectLocal(backoff, true)
-        return
-      }
-      
-      const isNetworkError = ['ECONNRESET','ECONNABORTED','ENOTFOUND','ETIMEDOUT','EAI_AGAIN','EHOSTUNREACH']
-        .some(c => (err.code||'').includes(c)) || msg.includes('socket hang up')
-      
-      if (isNetworkError) {
-        const isConnectionIssue = (err.code === 'ENOTFOUND' || err.code === 'EAI_AGAIN' || err.code === 'EHOSTUNREACH')
-        
-        if (isConnectionIssue) {
-          backoff = 20000 + Math.floor(Math.random() * 20000)
-          if (!UNSTABLE_INTERNET_MODE) {
-            noteNoInternetError()
-          }
-        } else {
-          backoff = 8000 + Math.floor(Math.random() * 12000)
-        }
-        
-        scheduleReconnectLocal(backoff, true)
-        return
-      }
-      
-      backoff = 15000 + Math.floor(Math.random() * 15000)
       scheduleReconnectLocal(backoff, true)
     })
   }
@@ -1378,6 +1449,7 @@ function createBot(cfg) {
       // FIX 11: Грейс-период 15 секунд на первый блок после старта
       const firstBlockGrace = Date.now() + 15000
       
+      const digDelay = Math.max(0, DIG_DELAY)
       let currentBlockIndex = 0
       let emptyBlocksCounter = 0
       let lastBlockPos = null
@@ -1424,7 +1496,7 @@ function createBot(cfg) {
           currentBlockIndex = (currentBlockIndex + 1) % blocksToMine.length
           emptyBlocksCounter++
           if (emptyBlocksCounter >= blocksToMine.length) {
-            await sleep(5)
+            await sleep(3)
             emptyBlocksCounter = 0
           }
           continue
@@ -1441,6 +1513,10 @@ function createBot(cfg) {
           
           await bot.dig(block, false)
           lastDigTime = Date.now()
+
+          if (digDelay > 0) {
+            await sleep(digDelay)
+          }
           
           // FIX 12: Позиция подтверждена после первого успешного блока
           if (!positionConfirmed) {
@@ -1518,7 +1594,7 @@ screen.key(['r'], () => {
     bot.blocksTotal = 0
   }
   addLog('info', 'SYSTEM', 'Статистика сброшена')
-  updateUI()
+  scheduleUIUpdate()
 })
 
 screen.key(['p', 'space'], () => {
@@ -1532,7 +1608,7 @@ screen.key(['p', 'space'], () => {
     }
   }
   
-  updateUI()
+  scheduleUIUpdate()
 })
 
 // ============================================================================
@@ -1546,9 +1622,11 @@ if (UNSTABLE_INTERNET_MODE) {
   addLog('info', 'SYSTEM', 'Режим нестабильного интернета: ВКЛ')
 }
 
-setInterval(updateUI, 1000)
-setInterval(updateActivityGraph, 10000)
-setInterval(updateScriptResources, 1000)
+setInterval(() => {
+  updateActivityGraph()
+  scheduleUIUpdate()
+}, GRAPH_UPDATE_MS)
+setInterval(updateScriptResources, UI_RENDER_INTERVAL_MS)
 
 setInterval(() => {
   const uptime = Date.now() - monitorData.startTime
@@ -1566,10 +1644,20 @@ setInterval(() => {
   }
 }, 300000)
 
+if (MEMORY_LIMIT_MB > 0) {
+  setInterval(() => {
+    const memUsageMb = process.memoryUsage().rss / 1024 / 1024
+    if (memUsageMb > MEMORY_LIMIT_MB) {
+      addLog('error', 'SYSTEM', `Превышен лимит памяти ${MEMORY_LIMIT_MB}MB (факт: ${memUsageMb.toFixed(1)}MB) -> перезапуск`)
+      fullRestart('memory-limit')
+    }
+  }, 60000)
+}
+
 startAllBots()
 
 setTimeout(() => {
   startRotationScheduler()
 }, PERIODIC_REJOIN_MS)
 
-updateUI()
+scheduleUIUpdate()
