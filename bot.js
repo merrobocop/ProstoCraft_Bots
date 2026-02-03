@@ -726,6 +726,7 @@ function createBot(cfg) {
   let menuTimer = null, reconnectTimer = null
   let positionCheckTimer = null, preventiveRestartTimer = null
   let fallCheckTimer = null, keepAliveTimer = null
+  let miningMonitorTimer = null
   let joinedSubserver = false, lastDigTime = 0
   let allowReconnects = false, backoff = RECONNECT_REGULAR
   let menuAttempts = 0, lastMenuAttempt = 0
@@ -737,6 +738,8 @@ function createBot(cfg) {
   let isOnline = false
   let isRotating = false
   let lastKeepAlive = Date.now()
+  let miningStartAt = null
+  let miningStartBlocks = 0
 
   // FIX 1: Счётчик повторных киков "подождите" для адаптивного backoff
   let waitKickCount = 0
@@ -775,6 +778,7 @@ function createBot(cfg) {
     try { if (preventiveRestartTimer) clearTimeout(preventiveRestartTimer) } catch(e){}
     try { if (fallCheckTimer) clearTimeout(fallCheckTimer) } catch(e){}
     try { if (keepAliveTimer) clearInterval(keepAliveTimer) } catch(e){}
+    try { if (miningMonitorTimer) clearInterval(miningMonitorTimer) } catch(e){}
   }
 
   // ============================================================================
@@ -892,6 +896,26 @@ function createBot(cfg) {
       
       addLog('info', username, 'Проверка позиции активирована')
     }, 30000)
+  }
+
+  function startMiningMonitor() {
+    if (miningMonitorTimer) clearInterval(miningMonitorTimer)
+    miningMonitorTimer = setInterval(() => {
+      if (!joinedSubserver || diggingPaused || isReturningToPosition) return
+      if (!miningStartAt) return
+      const botData = monitorData.bots[username]
+      if (!botData) return
+
+      const timeSinceStart = Date.now() - miningStartAt
+      const timeSinceLastDig = Date.now() - lastDigTime
+      const noBlocksYet = botData.blocksTotal <= miningStartBlocks
+
+      if (noBlocksYet && timeSinceStart > STUCK_THRESHOLD + 15000) {
+        addLog('warning', username, `Нет первого блока ${Math.round(timeSinceStart / 1000)}с (lastDig ${Math.round(timeSinceLastDig / 1000)}с) -> перезапуск`)
+        updateBotStatus(username, 'ожидание')
+        scheduleReconnectLocal()
+      }
+    }, 5000)
   }
 
   // ============================================================================
@@ -1442,16 +1466,20 @@ function createBot(cfg) {
       }
       
       addLog('success', username, 'Начинаю копать')
-      
+
       // FIX 10: lastDigTime инициализируется ЗДЕСЬ, не при создании бота
       lastDigTime = Date.now()
-      
+      miningStartAt = lastDigTime
+      miningStartBlocks = monitorData.bots[username]?.blocksTotal || 0
+      startMiningMonitor()
+
       // FIX 11: Грейс-период 15 секунд на первый блок после старта
       const firstBlockGrace = Date.now() + 15000
-      
+
       const digDelay = Math.max(0, DIG_DELAY)
       let currentBlockIndex = 0
       let emptyBlocksCounter = 0
+      let emptyCycles = 0
       let lastBlockPos = null
       let checksCounter = 0
       let lastCheckTime = Date.now()
@@ -1465,7 +1493,8 @@ function createBot(cfg) {
           if (now - lastCheckTime > 5000) {
             // Застрял — проверяем только ПОСЛЕ грейс-периода
             if (now > firstBlockGrace && now - lastDigTime > STUCK_THRESHOLD) {
-              addLog('warning', username, 'Застрял -> перезапуск')
+              const c = blocksToMine[currentBlockIndex]
+              addLog('warning', username, `Застрял -> перезапуск (index ${currentBlockIndex}, target ${c?.x},${c?.y},${c?.z})`)
               updateBotStatus(username, 'ожидание')
               scheduleReconnectLocal()
               break
@@ -1496,13 +1525,24 @@ function createBot(cfg) {
           currentBlockIndex = (currentBlockIndex + 1) % blocksToMine.length
           emptyBlocksCounter++
           if (emptyBlocksCounter >= blocksToMine.length) {
+            emptyCycles++
+            if (emptyCycles % 3 === 0) {
+              addLog('warning', username, `Нет блоков в списке (${emptyCycles} циклов подряд)`)
+            }
+            if (emptyCycles >= 6) {
+              addLog('warning', username, 'Блоки недоступны слишком долго -> перезапуск')
+              updateBotStatus(username, 'ожидание')
+              scheduleReconnectLocal()
+              break
+            }
             await sleep(3)
             emptyBlocksCounter = 0
           }
           continue
         }
-        
+
         emptyBlocksCounter = 0
+        emptyCycles = 0
         
         try {
           if (!lastBlockPos || !lastBlockPos.equals(pos)) {
