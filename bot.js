@@ -245,53 +245,69 @@ const POSITION_RETURN_TIMEOUT = config.position?.returnTimeout || 8000
 // ============================================================================
 // ГРАФИЧЕСКИЙ ИНТЕРФЕЙС (BLESSED)
 // ============================================================================
-const screen = blessed.screen({ smartCSR: true, title: 'Minecraft Bot Monitor' })
-const grid = new contrib.grid({ rows: 12, cols: 12, screen: screen })
+const isTermux = Boolean(
+  process.env.TERMUX_VERSION ||
+  (process.env.PREFIX && process.env.PREFIX.includes('com.termux')) ||
+  process.env.ANDROID_ROOT
+)
+const uiEnabled = (config?.ui?.enabled ?? true) && !process.env.NO_UI && !(isTermux && !process.env.FORCE_UI)
 
-const resourcesBox = grid.set(6, 8, 3, 4, blessed.box, {
-  label: '  Ресурсы скрипта ',
-  tags: true,
-  border: { type: 'line' },
-  style: { border: { fg: 'magenta' }, label: { fg: 'magenta', bold: true } }
-});
+let screen = null
+let grid = null
+let resourcesBox = null
+let logBox = null
+let infoBox = null
+let activityLine = null
+let botsTable = null
 
-const logBox = grid.set(6, 0, 6, 8, contrib.log, {
-  label: '  Логи ',
-  tags: true,
-  border: { type: 'line' },
-  style: { border: { fg: 'yellow' }, label: { fg: 'yellow', bold: true } },
-  bufferLength: 100
-})
+if (uiEnabled) {
+  screen = blessed.screen({ smartCSR: true, title: 'Minecraft Bot Monitor' })
+  grid = new contrib.grid({ rows: 12, cols: 12, screen: screen })
 
+  resourcesBox = grid.set(6, 8, 3, 4, blessed.box, {
+    label: '  Ресурсы скрипта ',
+    tags: true,
+    border: { type: 'line' },
+    style: { border: { fg: 'magenta' }, label: { fg: 'magenta', bold: true } }
+  })
 
-const infoBox = grid.set(0, 0, 2, 12, blessed.box, {
-  label: ' Общая статистика ',
-  tags: true,
-  border: { type: 'line' },
-  style: { border: { fg: 'cyan' }, label: { fg: 'cyan', bold: true } }
-})
+  logBox = grid.set(6, 0, 6, 8, contrib.log, {
+    label: '  Логи ',
+    tags: true,
+    border: { type: 'line' },
+    style: { border: { fg: 'yellow' }, label: { fg: 'yellow', bold: true } },
+    bufferLength: 100
+  })
 
-const activityLine = grid.set(2, 0, 4, 8, contrib.line, {
-  label: ' Активность копания (блоки/мин) ',
-  showLegend: true,
-  legend: { width: 20 },
-  style: { line: 'yellow', text: 'green', baseline: 'white', border: { fg: 'green' } },
-  xLabelPadding: 3,
-  xPadding: 5,
-  wholeNumbersOnly: false
-})
+  infoBox = grid.set(0, 0, 2, 12, blessed.box, {
+    label: ' Общая статистика ',
+    tags: true,
+    border: { type: 'line' },
+    style: { border: { fg: 'cyan' }, label: { fg: 'cyan', bold: true } }
+  })
 
-const botsTable = grid.set(2, 8, 4, 4, contrib.table, {
-  label: ' Статус ботов ',
-  keys: true,
-  vi: true,
-  fg: 'white',
-  selectedFg: 'white',
-  selectedBg: 'blue',
-  interactive: false,
-  columnSpacing: 2,
-  columnWidth: [16, 10, 12]
-})
+  activityLine = grid.set(2, 0, 4, 8, contrib.line, {
+    label: ' Активность копания (блоки/мин) ',
+    showLegend: true,
+    legend: { width: 20 },
+    style: { line: 'yellow', text: 'green', baseline: 'white', border: { fg: 'green' } },
+    xLabelPadding: 3,
+    xPadding: 5,
+    wholeNumbersOnly: false
+  })
+
+  botsTable = grid.set(2, 8, 4, 4, contrib.table, {
+    label: ' Статус ботов ',
+    keys: true,
+    vi: true,
+    fg: 'white',
+    selectedFg: 'white',
+    selectedBg: 'blue',
+    interactive: false,
+    columnSpacing: 2,
+    columnWidth: [16, 10, 12]
+  })
+}
 
 
 // ============================================================================
@@ -314,6 +330,7 @@ monitorData.scriptResources = {
 // ФУНКЦИИ UI
 // ============================================================================
 function updateInfoBox() {
+  if (!uiEnabled) return
   const uptime = Date.now() - monitorData.startTime
   const hours = Math.floor(uptime / 3600000)
   const minutes = Math.floor((uptime % 3600000) / 60000)
@@ -336,6 +353,7 @@ let lastCpuUsage = process.cpuUsage()
 let lastCpuTime = Date.now()
 
 function updateScriptResources() {
+  if (!uiEnabled) return
   const memUsage = (process.memoryUsage().rss / 1024 / 1024).toFixed(1);
   const currentCpuUsage = process.cpuUsage();
   const currentTime = Date.now();
@@ -355,6 +373,7 @@ function updateScriptResources() {
 }
 
 function updateActivityGraph() {
+  if (!uiEnabled) return
   const now = new Date()
   const timeLabel = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
   monitorData.activityHistory.x.push(timeLabel)
@@ -396,6 +415,7 @@ function updateActivityGraph() {
 
 
 function updateBotsTable() {
+  if (!uiEnabled) return
   const headers = ['Имя бота', 'Статус', 'Добыто']
   const data = []
   const statusColors = {
@@ -430,7 +450,11 @@ function addLog(level, botName, message) {
     .replace(/[+✗⚠•⏸▶OKERR]/g, '')
     .trim()
   
-  logBox.log(`${color}[${time}] ${icon} [${botName}]{/} ${cleanMessage}`)
+  if (uiEnabled) {
+    logBox.log(`${color}[${time}] ${icon} [${botName}]{/} ${cleanMessage}`)
+  } else {
+    _log(`[${time}] ${icon} [${botName}] ${cleanMessage}`)
+  }
   
   const levelNames = { 'info': 'INFO', 'success': 'SUCC', 'warning': 'WARN', 'error': 'ERR ' }
   const levelName = levelNames[level] || 'INFO'
@@ -460,6 +484,7 @@ function updateBotStatus(botName, status, data = {}) {
 }
 
 function updateUI() {
+  if (!uiEnabled) return
   updateInfoBox()
   updateActivityGraph()
   updateBotsTable()
@@ -1507,40 +1532,51 @@ function startAllBots() {
 // ============================================================================
 // ГОРЯЧИЕ КЛАВИШИ
 // ============================================================================
-screen.key(['escape', 'q', 'C-c'], () => {
+const shutdown = () => {
   stopAllBots()
   process.exit(0)
-})
+}
 
-screen.key(['r'], () => {
-  monitorData.totalBlocks = 0
-  for (const bot of Object.values(monitorData.bots)) {
-    bot.blocksTotal = 0
-  }
-  addLog('info', 'SYSTEM', 'Статистика сброшена')
-  updateUI()
-})
+if (uiEnabled) {
+  screen.key(['escape', 'q', 'C-c'], shutdown)
 
-screen.key(['p', 'space'], () => {
-  diggingPaused = !diggingPaused
-  const status = diggingPaused ? 'ПРИОСТАНОВЛЕНО' : 'ВОЗОБНОВЛЕНО'
-  addLog('info', 'SYSTEM', `Копание ${status}`)
-  
-  for (const [botName, botData] of Object.entries(monitorData.bots)) {
-    if (botData.status === 'копает' || botData.status === 'пауза') {
-      botData.status = diggingPaused ? 'пауза' : 'копает'
+  screen.key(['r'], () => {
+    monitorData.totalBlocks = 0
+    for (const bot of Object.values(monitorData.bots)) {
+      bot.blocksTotal = 0
     }
-  }
-  
-  updateUI()
-})
+    addLog('info', 'SYSTEM', 'Статистика сброшена')
+    updateUI()
+  })
+
+  screen.key(['p', 'space'], () => {
+    diggingPaused = !diggingPaused
+    const status = diggingPaused ? 'ПРИОСТАНОВЛЕНО' : 'ВОЗОБНОВЛЕНО'
+    addLog('info', 'SYSTEM', `Копание ${status}`)
+    
+    for (const [botName, botData] of Object.entries(monitorData.bots)) {
+      if (botData.status === 'копает' || botData.status === 'пауза') {
+        botData.status = diggingPaused ? 'пауза' : 'копает'
+      }
+    }
+    
+    updateUI()
+  })
+}
+
+process.on('SIGINT', shutdown)
+process.on('SIGTERM', shutdown)
 
 // ============================================================================
 // ЗАПУСК
 // ============================================================================
 addLog('info', 'SYSTEM', ' Менеджер ботов запущен')
 addLog('info', 'SYSTEM', `Сервер: ${SERVER_HOST} (${MC_VERSION})`)
-addLog('info', 'SYSTEM', 'Q/ESC - выход | R - сброс статистики | P/SPACE - пауза')
+if (uiEnabled) {
+  addLog('info', 'SYSTEM', 'Q/ESC - выход | R - сброс статистики | P/SPACE - пауза')
+} else {
+  addLog('info', 'SYSTEM', 'UI отключен (Termux/NO_UI). Используйте Ctrl+C для остановки')
+}
 addLog('info', 'SYSTEM', ' VPN режим: увеличенные таймауты (120с)')
 if (UNSTABLE_INTERNET_MODE) {
   addLog('info', 'SYSTEM', 'Режим нестабильного интернета: ВКЛ')
