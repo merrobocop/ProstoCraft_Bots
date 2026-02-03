@@ -1496,9 +1496,11 @@ function createBot(cfg) {
       const firstBlockGrace = Date.now() + 15000
 
       const digDelay = Math.max(0, DIG_DELAY)
+      const emptyBlockGraceUntil = Date.now() + 15000
       let currentBlockIndex = 0
       let emptyBlocksCounter = 0
       let emptyCycles = 0
+      let missingChunkCycles = 0
       let lastBlockPos = null
       let checksCounter = 0
       let lastCheckTime = Date.now()
@@ -1538,30 +1540,51 @@ function createBot(cfg) {
         
         const c = blocksToMine[currentBlockIndex]
         const pos = vec3(c.x, c.y, c.z)
-        const block = bot.blockAt(pos)
-        
-        if (!block || block.type === 0) {
-          currentBlockIndex = (currentBlockIndex + 1) % blocksToMine.length
-          emptyBlocksCounter++
-          if (emptyBlocksCounter >= blocksToMine.length) {
-            emptyCycles++
-            if (emptyCycles % 3 === 0) {
-              addLog('warning', username, `Нет блоков в списке (${emptyCycles} циклов подряд)`)
+        const column = bot.world ? bot.world.getColumnAt(pos) : null
+        if (!column) {
+          if (Date.now() > emptyBlockGraceUntil) {
+            missingChunkCycles++
+            if (missingChunkCycles % 10 === 0) {
+              addLog('warning', username, `Чанк не загружен (${missingChunkCycles} попыток)`)
             }
-            if (emptyCycles >= 6) {
-              addLog('warning', username, 'Блоки недоступны слишком долго -> перезапуск')
+            if (missingChunkCycles >= 30) {
+              addLog('warning', username, 'Чанк не загрузился -> перезапуск')
               updateBotStatus(username, 'ожидание')
               scheduleReconnectLocal()
               break
             }
-            await sleep(1)
-            emptyBlocksCounter = 0
+          }
+          await sleep(200)
+          continue
+        }
+
+        const block = bot.blockAt(pos)
+        
+        if (!block || block.type === 0) {
+          currentBlockIndex = (currentBlockIndex + 1) % blocksToMine.length
+          if (Date.now() > emptyBlockGraceUntil) {
+            emptyBlocksCounter++
+            if (emptyBlocksCounter >= blocksToMine.length) {
+              emptyCycles++
+              if (emptyCycles % 10 === 0) {
+                addLog('warning', username, `Нет блоков в списке (${emptyCycles} циклов подряд)`)
+              }
+              if (emptyCycles >= 30) {
+                addLog('warning', username, 'Блоки недоступны слишком долго -> перезапуск')
+                updateBotStatus(username, 'ожидание')
+                scheduleReconnectLocal()
+                break
+              }
+              await sleep(50)
+              emptyBlocksCounter = 0
+            }
           }
           continue
         }
 
         emptyBlocksCounter = 0
         emptyCycles = 0
+        missingChunkCycles = 0
         
         try {
           if (!lastBlockPos || !lastBlockPos.equals(pos)) {
