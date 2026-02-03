@@ -5,7 +5,14 @@
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start:dev": "node bot.js",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "jest",
+    "bench": "node bench/bench-dig-loop.js"
+  },
+  "engines": {
+    "node": ">=14.0.0"
   },
   "repository": {
     "type": "git",
@@ -24,5 +31,10 @@
     "mineflayer": "^4.34.0",
     "mineflayer-physics": "^0.0.9",
     "vec3": "^0.1.10"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "prettier": "^3.2.5"
   }
 }
