@@ -29,15 +29,15 @@ const DEFAULT_CONFIG = {
     digDelay: 0,
     stuckThreshold: 30000,
     restartIfIdleMs: 120000,
-    minReconnectInterval: 30000,
+    minReconnectInterval: 60000,
     reconnectRegular: 15000,
     reconnectOnInternetLoss: 45000,
     internetRetryInterval: 60000,
     internetCheckInterval: 30000,
     maxInternetRetries: 999,
     graceAfterSpawn: 20000,
-    startStagger: 0,
-    startStaggerJitter: 0,
+    startStagger: 20000,
+    startStaggerJitter: 10000,
     periodicRejoinMs: 3600000,
     rotationDelayBetweenBots: 120000
   },
@@ -743,6 +743,12 @@ function createBot(cfg) {
   let lastKeepAlive = Date.now()
   let miningStartAt = null
   let miningStartBlocks = 0
+  const instanceId = Symbol(username)
+
+  function isCurrentInstance() {
+    const current = activeBots.find(b => b.username === username)
+    return current && current.instanceId === instanceId
+  }
 
   // FIX 1: Счётчик повторных киков "подождите" для адаптивного backoff
   let waitKickCount = 0
@@ -762,7 +768,7 @@ function createBot(cfg) {
       return { delay: 20000 + Math.floor(Math.random() * 20000), isNoInternet: false }
     }
     if (lowerMsg.includes('you are logging in too fast') || lowerMsg.includes('logging too')) {
-      return { delay: 180000 + Math.floor(Math.random() * 180000), isNoInternet: false }
+      return { delay: 300000 + Math.floor(Math.random() * 300000), isNoInternet: false }
     }
     if (isNetworkError) {
       if (isConnectionIssue) {
@@ -1353,6 +1359,7 @@ function createBot(cfg) {
     })
 
     bot.on('kicked', reason => {
+      if (!isCurrentInstance()) return
       isOnline = false
       // FIX 7: Сброс positionConfirmed при любом кике
       positionConfirmed = false
@@ -1400,8 +1407,8 @@ function createBot(cfg) {
       }
       
       if (low.includes('you are logging in too fast') || low.includes('logging too')) {
-        addLog('warning', username, '! Слишком быстрый вход - ждём 3-6 минут')
-        backoff = 180000 + Math.floor(Math.random() * 180000)
+        addLog('warning', username, '! Слишком быстрый вход - ждём 5-10 минут')
+        backoff = 300000 + Math.floor(Math.random() * 300000)
         scheduleReconnectLocal(backoff, true)
         return
       }
@@ -1419,6 +1426,7 @@ function createBot(cfg) {
     })
 
     bot.on('end', () => {
+      if (!isCurrentInstance()) return
       isOnline = false
       positionConfirmed = false // FIX 7b: сброс при отключении
       if (!reconnectScheduled && !isRotating) {
@@ -1431,6 +1439,7 @@ function createBot(cfg) {
     })
 
     bot.on('error', err => {
+      if (!isCurrentInstance()) return
       isOnline = false
       positionConfirmed = false // FIX 7c: сброс при ошибке
       const msg = String(err && err.message ? err.message : err)
@@ -1452,6 +1461,7 @@ function createBot(cfg) {
 
   async function startDiggingLoop() {
     try {
+      if (!isCurrentInstance()) return
       // Ожидаем полной инициализации
       for (let i=0;i<100;i++){
         if (bot && bot.entity && bot.world && bot.player) break
@@ -1595,9 +1605,10 @@ function createBot(cfg) {
 
 
   startClient()
-  return {
-    username,
-    get bot() { return bot },
+      return {
+        username,
+        instanceId,
+        get bot() { return bot },
     get isOnline() { return isOnline },
     set isRotating(val) { isRotating = val },
     cleanup: () => {
