@@ -29,14 +29,15 @@ const DEFAULT_CONFIG = {
     digDelay: 0,
     stuckThreshold: 30000,
     restartIfIdleMs: 120000,
+    minReconnectInterval: 30000,
     reconnectRegular: 15000,
     reconnectOnInternetLoss: 45000,
     internetRetryInterval: 60000,
     internetCheckInterval: 30000,
     maxInternetRetries: 999,
     graceAfterSpawn: 20000,
-    startStagger: 30000,
-    startStaggerJitter: 15000,
+    startStagger: 0,
+    startStaggerJitter: 0,
     periodicRejoinMs: 3600000,
     rotationDelayBetweenBots: 120000
   },
@@ -290,6 +291,7 @@ const HOTBAR_SLOT = config.menu.hotbarSlot
 const DIG_DELAY = config.timing.digDelay
 const STUCK_THRESHOLD = config.timing.stuckThreshold
 const RESTART_IF_IDLE_MS = config.timing.restartIfIdleMs
+const MIN_RECONNECT_INTERVAL = config.timing.minReconnectInterval || 30000
 const RECONNECT_REGULAR = config.timing.reconnectRegular
 const RECONNECT_ON_INTERNET_LOSS = config.timing.reconnectOnInternetLoss
 const INTERNET_RETRY_INTERVAL = config.timing.internetRetryInterval
@@ -732,6 +734,7 @@ function createBot(cfg) {
   let menuAttempts = 0, lastMenuAttempt = 0
   let isReturningToPosition = false
   let reconnectScheduled = false
+  let lastReconnectAt = 0
   let waitingForFall = false
   let initialY = null
   let fallCheckPassed = false
@@ -759,7 +762,7 @@ function createBot(cfg) {
       return { delay: 20000 + Math.floor(Math.random() * 20000), isNoInternet: false }
     }
     if (lowerMsg.includes('you are logging in too fast') || lowerMsg.includes('logging too')) {
-      return { delay: 60000 + Math.floor(Math.random() * 60000), isNoInternet: false }
+      return { delay: 180000 + Math.floor(Math.random() * 180000), isNoInternet: false }
     }
     if (isNetworkError) {
       if (isConnectionIssue) {
@@ -1135,12 +1138,17 @@ function createBot(cfg) {
     }
 
     const jitter = Math.floor(Math.random() * 3000)
-    addLog('info', username, `Переподключение через ${Math.round((delay + jitter)/1000)}с`)
+    const now = Date.now()
+    const earliest = lastReconnectAt + MIN_RECONNECT_INTERVAL
+    const minDelay = Math.max(0, earliest - now)
+    const finalDelay = Math.max(delay, minDelay)
+    addLog('info', username, `Переподключение через ${Math.round((finalDelay + jitter)/1000)}с`)
     updateBotStatus(username, 'ожидание')
 
     reconnectTimer = setTimeout(() => {
       reconnectScheduled = false
       reconnectTimer = null
+      lastReconnectAt = Date.now()
       
       try { 
         if (bot) {
@@ -1168,7 +1176,7 @@ function createBot(cfg) {
         reconnectScheduled = false
         setTimeout(() => scheduleReconnectLocal(5000, true), 5000)
       }
-    }, delay + jitter)
+    }, finalDelay + jitter)
   }
 
 
@@ -1392,8 +1400,8 @@ function createBot(cfg) {
       }
       
       if (low.includes('you are logging in too fast') || low.includes('logging too')) {
-        addLog('warning', username, '! Слишком быстрый вход - ждём 1-2 минуты')
-        backoff = 60000 + Math.floor(Math.random() * 60000)
+        addLog('warning', username, '! Слишком быстрый вход - ждём 3-6 минут')
+        backoff = 180000 + Math.floor(Math.random() * 180000)
         scheduleReconnectLocal(backoff, true)
         return
       }
@@ -1466,6 +1474,7 @@ function createBot(cfg) {
       }
       
       addLog('success', username, 'Начинаю копать')
+      updateBotStatus(username, 'копает')
 
       // FIX 10: lastDigTime инициализируется ЗДЕСЬ, не при создании бота
       lastDigTime = Date.now()
@@ -1535,7 +1544,7 @@ function createBot(cfg) {
               scheduleReconnectLocal()
               break
             }
-            await sleep(3)
+            await sleep(1)
             emptyBlocksCounter = 0
           }
           continue
